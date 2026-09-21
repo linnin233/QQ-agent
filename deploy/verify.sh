@@ -64,10 +64,20 @@ ws_hostport=${ONEBOT_WS#ws://}
 ws_hostport=${ws_hostport%%/*}
 ws_host=${ws_hostport%%:*}
 ws_port=${ws_hostport##*:}
+# 注意：协议端跑在容器里时，宿主机的 docker-proxy 会一直占着端口，
+# 所以"端口可达"不等于"OneBot 能用"（令牌没同步时是 401）。真正的判据是下面这条。
+st=$(curl -s -m 8 "http://127.0.0.1:$PORT/api/status" || echo '')
+if echo "$st" | grep -q '"connected":true'; then
+  nick=$(echo "$st" | sed -n 's/.*"self":{[^}]*"nickname":"\([^"]*\)".*/\1/p')
+  pass "OneBot 已连接${nick:+（$nick）}"
+else
+  err=$(echo "$st" | sed -n 's/.*"error":"\([^"]*\)".*/\1/p')
+  fail "OneBot 未连接${err:+：$err}（协议端未登录，或 snowluma.dir 没指向协议端配置目录导致拿不到令牌）"
+fi
 if timeout 3 bash -c "exec 3<>/dev/tcp/$ws_host/$ws_port" 2>/dev/null; then
   pass "协议端端口可达 $ONEBOT_WS"
 else
-  fail "协议端不可达 $ONEBOT_WS —— 机器人收不到任何消息（协议端未启动，或选了不存在的方案）"
+  fail "协议端不可达 $ONEBOT_WS"
 fi
 if command -v docker >/dev/null 2>&1; then
   docker ps --format '  [容器] {{.Names}} {{.Image}} {{.Status}}' 2>/dev/null | head -5

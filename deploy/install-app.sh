@@ -40,10 +40,14 @@ mkdir -p "$DATA_DIR"
 # ── 4) 首次写入配置骨架（已存在则不覆盖；API Key 到控制台里填）──
 CONFIG_FILE="$DATA_DIR/config.json"
 if [[ ! -f $CONFIG_FILE ]]; then
+  # snowluma.dir 指向协议端容器的数据卷：qq-agent 会去读 config/onebot_<uin>.json
+  # 里的 per-account 令牌来自动连接。协议端跑在 Docker 里时这是唯一能读到令牌的路径，
+  # 留空的话拿不到令牌，OneBot 会一直 401（实测踩过）。
+  SNOWLUMA_DATA_DIR=${SNOWLUMA_DATA_DIR:-/var/lib/docker/volumes/qq-gateway-data/_data}
   cat > "$CONFIG_FILE" <<JSON
 {
   "snowluma": {
-    "dir": "",
+    "dir": "${SNOWLUMA_DATA_DIR}",
     "autoLaunch": false,
     "wsUrl": "${ONEBOT_WS:-ws://127.0.0.1:3001}",
     "httpUrl": "${ONEBOT_HTTP:-http://127.0.0.1:3000}",
@@ -53,7 +57,7 @@ if [[ ! -f $CONFIG_FILE ]]; then
   "server": { "port": ${PORT}, "token": "" }
 }
 JSON
-  echo "-- 已写入配置骨架 $CONFIG_FILE"
+  echo "-- 已写入配置骨架 $CONFIG_FILE（snowluma.dir=$SNOWLUMA_DATA_DIR）"
 else
   echo "-- 配置已存在，保留不动：$CONFIG_FILE"
 fi

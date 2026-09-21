@@ -95,7 +95,20 @@ scp root@<服务器IP>:/tmp/snowluma-login.png .   # 拉到本机扫
 
 `--refresh` 靠容器内的 xdotool 点 QQ 窗口的「刷新」按钮（坐标按 1280x800 标定，可用
 `QR_REFRESH_X/QR_REFRESH_Y` 覆盖）；没有 xdotool 时只能 `docker restart snowluma` 让它
-重出一次码。二维码约两分钟过期，过期就再跑一次。
+重出一次码。二维码约两分钟过期，过期就再跑一次。登录成功后登录态落在 `qq-client-data`
+卷里，之后重启容器不必重新扫码。
+
+**登录后还要让 qq-agent 拿到令牌**：SnowLuma 给每个登录过的账号生成独立的随机 accessToken，
+存在容器数据卷的 `config/onebot_<uin>.json` 里。qq-agent 的自动同步逻辑是去读
+`snowluma.dir` 下的 `config/onebot_*.json`，所以这个配置必须指向容器数据卷：
+
+```
+snowluma.dir = /var/lib/docker/volumes/qq-gateway-data/_data
+```
+
+`install-app.sh` 写初始配置时已经带上这个值，控制台「设置 → SnowLuma 目录」里也能改。
+留空的话 qq-agent 读不到令牌，OneBot 会一直报 `401 unauthorized`——协议端跑在 Docker 里，
+它的 `config/` 不在项目目录，靠"项目内 ./snowluma 自动探测"是探测不到的（实测踩过）。
 
 ## 排障
 
@@ -105,6 +118,8 @@ scp root@<服务器IP>:/tmp/snowluma-login.png .   # 拉到本机扫
 | 所有接口 401 | 你设了 `server.token`。内置前端只送常量 `qq-agent-console`，请把它清空，用 nginx 鉴权 |
 | `dnf install nginx` 报 filtered out | 宝塔写的 `exclude=`，加 `--disableexcludes=all` |
 | 页面能开、机器人不回消息 | 协议端没起来。`ss -lntp \| grep -E '3000\|3001'`，看 `journalctl -u qq-agent` 里的 `ECONNREFUSED 127.0.0.1:3001` |
+| OneBot 报 `401 unauthorized` | 令牌没同步：把 `snowluma.dir` 指向容器数据卷 `/var/lib/docker/volumes/qq-gateway-data/_data`（详见上一节）。注意宿主机端口被 docker-proxy 占着，端口"可达"并不代表能用 |
+| 群里 @ 机器人没反应 | 白名单为空。控制台「设置 → 白名单」里勾群，或打开 `allowAllWhenEmpty` |
 | 服务器突然变卡/MySQL 挂掉 | 内存打满触发 OOM。给容器或协议端设 `MemoryMax=`，或升级 ECS 内存 |
 | 宝塔面板要装它自己的 nginx | 会与系统 nginx 抢 80/443。二选一：一直用系统 nginx（本方案），或改用宝塔的 nginx 并自行维护这份站点配置 |
 
