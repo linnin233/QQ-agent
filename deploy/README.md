@@ -60,19 +60,41 @@ sudo deploy/verify.sh
 ## 协议端（必须另装，应用自己拉不起）
 
 上游仓库不含协议端，且 `src/app.js` 的 `launchSnowluma()` 只认 Windows 的 `node.exe` / `cmd.exe /c launcher.bat`，
-`export all` 里的 `/api/snowluma/open-folder`（`explorer.exe`）与 `open-webui`（`cmd.exe /c start`）在 Linux 上都会报错——
+`/api/snowluma/open-folder`（`explorer.exe`）与 `open-webui`（`cmd.exe /c start`）在 Linux 上都会报错——
 但都是可选按钮，不影响机器人本体。所以 Linux 上：
 
 - 保持 `snowluma.autoLaunch = false`；
 - 自己把协议端跑起来，让 `ws://127.0.0.1:3001` 与 `http://127.0.0.1:3000` 可达；
 - 在控制台「设置 → OneBot」里核对地址与令牌。
 
-两种可选方案（内存是决定性因素）：
+本方案选 **SnowLuma 官方 Docker**（`deploy/snowluma-compose.yml` + `deploy/install-protocol.sh`），原因：
 
-| 方案 | 内存 | 扫码登录 | 说明 |
-| --- | --- | --- | --- |
-| SnowLuma 官方 Docker（官方推荐路径） | 900MB ~ 1.5GB | 需要图形通道：容器内 noVNC（6081）走 SSH 隧道，或浏览器访问 | 必须 `--cap-add=SYS_PTRACE --security-opt seccomp=unconfined`，`--shm-size=1g`；镜像来自 Docker Hub，直连不通时用镜像站 |
-| Lagrange（协议重实现，自包含二进制） | 约 200 ~ 300MB | 终端/日志输出二维码图片路径，纯命令行 | 不需要 QQ 客户端、不需要 Xvfb/VNC，适合 2G 机器；但属于协议重实现，风控/封号风险相对更高，OneBot v11 兼容性需实测 |
+| 候选 | 结论 |
+| --- | --- |
+| SnowLuma Docker | 官方唯一正式支持的 Linux 路径，跑的是真实 Linux QQ（协议行为最接近正常客户端，风控风险最低），OneBot v11 支持完整。代价是内存：Linux QQ + Xvfb + VNC + supervisord 常驻约 900MB–1.5GB |
+| Lagrange.OneBot | 纯协议重实现，只要 ~200–300MB，终端出二维码，本可完美适配小内存机器。**但 V1 已 sunset**（Lagrange.Core 主分支已切到 V2，V2 提供的是 Milky 协议而非 OneBot v11），nightly 构建停留在 2025-08，登录成功率无保证，故未采用 |
+| NapCat / LLOneBot | NapCat 的 Linux 形态同样需要 QQ 客户端（内存与 SnowLuma 同级），LLOneBot 仅 Windows |
+
+因此这台 99 计划的 2G 机器用 `mem_limit: 1300m` + `memswap_limit: 1900m` 硬扛：内存打满时优先牺牲容器，不拖垮 nginx 与 qq-agent。
+若实测不稳，唯一干净的解法是升配内存（2G→4G），或在别处跑协议端再把地址指过来（需公网 TLS + 令牌，风险更高，不推荐）。
+
+扫码登录（noVNC 只在回环，公网不开，走 SSH 隧道）：
+
+```bash
+ssh -L 6081:127.0.0.1:6081 root@<服务器IP>
+# 浏览器打开 http://127.0.0.1:6081/vnc.html，输入 deploy.conf 里的 VNC_PASSWD
+# 远程桌面里 QQ 已自动启动，手机 QQ 扫码即可
+```
+
+不想开隧道也可以直接把二维码抓成图片（容器里有 xwd + ffmpeg，本脚本已封装）：
+
+```bash
+sudo deploy/qr.sh                       # 默认 /tmp/snowluma-login.png
+scp root@<服务器IP>:/tmp/snowluma-login.png .   # 拉到本机扫
+```
+
+二维码约两分钟过期，失效就重跑 `deploy/qr.sh`。登录成功后 SnowLuma 会把登录态写进
+`qq-client-data` 卷，之后重启容器不必重新扫码。
 
 ## 排障
 
