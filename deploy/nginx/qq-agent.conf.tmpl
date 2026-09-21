@@ -1,0 +1,70 @@
+# QQ Agent 反向代理站点（由 deploy/install-nginx.sh 渲染到 /etc/nginx/conf.d/qq-agent.conf）
+#
+# 设计要点（改动前请先读）：
+# 1. 后端 src/app.js 的 server.listen 硬编码 127.0.0.1，所以本文件只能反代本机。
+# 2. 后端没有任何 CORS 头，也没有 OPTIONS 预检处理，因此前端必须与 API 同源 ——
+#    由同一个域名代理静态页与 /api，正好满足。
+# 3. 后端的鉴权与内置前端是错位的：前端永远只送常量 x-console-token: qq-agent-console，
+#    而 authorize() 拿它和 server.token 比较；一旦设了 server.token，内置前端所有请求
+#    与 EventSource('/api/events') 都会 401。所以保持 server.token 留空，
+#    访问控制由这里的 auth_basic 承担。
+# 4. /api/events 是 SSE：必须关缓冲、放宽超时，否则控制台页面“永远不刷新”。
+
+server {
+    # default_server：抢在系统自带的 80 站点前面，避免直接用 IP 访问时看到 nginx 欢迎页
+    listen 80 default_server;
+    server_name __DOMAIN__;
+
+    # 证书签发的 webroot 校验也落在这里（如需改用 certbot）
+    location /.well-known/acme-challenge/ {
+        root /var/www/html;
+        auth_basic off;
+    }
+
+    location / {
+        # 不是我们的域名就直接断连，不暴露任何页面
+        if ($host != __DOMAIN__) {
+            return 444;
+        }
+        return 301 https://$host$request_uri;
+    }
+}
+
+server {
+    listen 443 ssl http2 default_server;
+    server_name __DOMAIN__;
+
+    ssl_certificate     __CERT_PEM__;
+    ssl_certificate_key __CERT_KEY__;
+    ssl_protocols       TLSv1.2 TLSv1.3;
+    ssl_ciphers         HIGH:!aNULL:!MD5;
+    ssl_session_cache   shared:QQAGENT:10m;
+    ssl_session_timeout 1h;
+
+    add_header Strict-Transport-Security "max-age=31536000" always;
+    add_header X-Content-Type-Options nosniff always;
+    add_header X-Frame-Options DENY always;
+    add_header Referrer-Policy no-referrer always;
+
+    # 唯一的访问控制层。密码哈希存在 __HTPASSWD__（apr1，由 openssl 生成）
+    auth_basic           "QQ Agent";
+    auth_basic_user_file __HTPASSWD__;
+
+    client_max_body_size 24m;
+
+    location / {
+        proxy_pass http://127.0.0.1:__PORT__;
+        proxy_http_version 1.1;
+        proxy_set_header Host              $host;
+        proxy_set_header X-Real-IP         $remote_addr;
+        proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header Connection        "";
+
+        # SSE 必需：不关缓冲则事件被 nginx 攒着，控制台看起来像卡死
+        proxy_buffering off;
+        proxy_cache off;
+        proxy_read_timeout 3600s;
+        proxy_send_timeout 3600s;
+    }
+}

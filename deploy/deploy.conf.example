@@ -1,0 +1,29 @@
+# QQ Agent Linux 部署变量
+# 用法：cp deploy.conf.example /etc/qq-agent/deploy.conf && chmod 600 /etc/qq-agent/deploy.conf
+# 所有脚本都 source 这个文件，改配置只改这里。
+
+# ── 域名 ──
+# 必须与证书里的域名完全一致（server_name 与证书不匹配会直接握手失败）。
+# 建议用子域，不要占用根域。
+DOMAIN="qq.linnin.cn"
+
+# ── 阿里云 SSL 证书（nginx 格式）──
+# 阿里云证书服务下载 "Nginx" 版本会得到 <域名>.pem 与 <域名>.key 两个文件，
+# 放到下面的路径即可（install-nginx.sh 会把权限收紧到 600）。
+CERT_PEM="/etc/nginx/certs/${DOMAIN}.pem"
+CERT_KEY="/etc/nginx/certs/${DOMAIN}.key"
+
+# ── 控制台 Basic Auth ──
+# 后端自身没有登录态、没有 CSRF、没有限频，公网访问控制全靠 nginx 这一层。
+AUTH_USER="linnin"
+AUTH_PASS="请改成你自己的强密码"
+
+# ── 应用与数据 ──
+APP_DIR="/opt/qq-agent"
+DATA_DIR="/var/lib/qq-agent"
+PORT="3210"
+
+# ── 协议端（OneBot v11）──
+# 默认同机部署；换成别的实现时只改这两个地址。
+ONEBOT_WS="ws://127.0.0.1:3001"
+ONEBOT_HTTP="http://127.0.0.1:3000"
