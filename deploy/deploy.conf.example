@@ -15,7 +15,7 @@ CERT_KEY="/etc/nginx/certs/${DOMAIN}.key"
 
 # ── 控制台 Basic Auth ──
 # 后端自身没有登录态、没有 CSRF、没有限频，公网访问控制全靠 nginx 这一层。
-AUTH_USER="linnin"
+AUTH_USER="admin"
 AUTH_PASS="请改成你自己的强密码"
 
 # ── 应用与数据 ──
