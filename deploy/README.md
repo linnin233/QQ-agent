@@ -89,12 +89,13 @@ ssh -L 6081:127.0.0.1:6081 root@<服务器IP>
 不想开隧道也可以直接把二维码抓成图片（容器里有 xwd + ffmpeg，本脚本已封装）：
 
 ```bash
-sudo deploy/qr.sh                       # 默认 /tmp/snowluma-login.png
+sudo deploy/qr.sh --refresh             # 先点「刷新」出新码，再截到 /tmp/snowluma-login.png
 scp root@<服务器IP>:/tmp/snowluma-login.png .   # 拉到本机扫
 ```
 
-二维码约两分钟过期，失效就重跑 `deploy/qr.sh`。登录成功后 SnowLuma 会把登录态写进
-`qq-client-data` 卷，之后重启容器不必重新扫码。
+`--refresh` 靠容器内的 xdotool 点 QQ 窗口的「刷新」按钮（坐标按 1280x800 标定，可用
+`QR_REFRESH_X/QR_REFRESH_Y` 覆盖）；没有 xdotool 时只能 `docker restart snowluma` 让它
+重出一次码。二维码约两分钟过期，过期就再跑一次。
 
 ## 排障
 

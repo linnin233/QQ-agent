@@ -26,6 +26,14 @@ docker image inspect motricseven7/snowluma:latest >/dev/null 2>&1 || { echo "镜
 export VNC_PASSWD
 docker compose -f "$SELF_DIR/snowluma-compose.yml" up -d
 
+# 容器内补一个 xdotool：登录前二维码约两分钟就过期，qr.sh 需要它去点 QQ 窗口里的
+# 「刷新」重新出码，否则只能重启容器。装进运行中的容器，容器重建后本脚本会再装一次。
+if docker exec -u root snowluma sh -lc 'apt-get update -qq >/dev/null 2>&1 && apt-get install -y -qq xdotool >/dev/null 2>&1' 2>/dev/null; then
+  echo "-- 容器内 xdotool 就绪（deploy/qr.sh 可自动刷新二维码）"
+else
+  echo "-- 警告：容器内 xdotool 安装失败；二维码过期后请走 noVNC 隧道，或先 docker restart snowluma"
+fi
+
 sleep 12
 echo "== 容器状态 =="
 docker ps --format '{{.Names}} | {{.Image}} | {{.Status}} | {{.Ports}}'
