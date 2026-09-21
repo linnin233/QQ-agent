@@ -52,6 +52,26 @@ server {
 
     client_max_body_size 24m;
 
+    # ── 表情库图片（qq-agent 发给 QQ 的图片，由协议端从这里下载）──
+    #
+    # ⚠ auth_basic off 是必须的：协议端下载图片时是裸请求，不带任何认证，
+    #   而本 server 段默认挂了 auth_basic。实测容器访问 https://<域名>/ 拿到 401，
+    #   图片就会发不出去（OneBot 报 "HTTP download failed: 401"）。
+    #   这里放的本来就是站点的公开档案图，单独放行不涉及控制台数据。
+    location /stickers/ {
+        auth_basic off;
+        alias /var/lib/qq-agent/stickers/;
+        autoindex off;
+        types {
+            image/png  png;
+            image/jpeg jpg jpeg;
+            image/webp webp;
+            image/gif  gif;
+        }
+        add_header Cache-Control "public, max-age=31536000, immutable";
+    }
+
+
     location / {
         proxy_pass http://127.0.0.1:__PORT__;
         proxy_http_version 1.1;

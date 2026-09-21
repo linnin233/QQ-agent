@@ -133,3 +133,21 @@ mv /etc/nginx/conf.d/default.conf.disabled /etc/nginx/conf.d/default.conf 2>/dev
 nginx -t && systemctl reload nginx
 # 数据与代码保留在 /var/lib/qq-agent 与 /opt/qq-agent，确认无误后再删
 ```
+
+## 表情库导入（把外部图片变成机器人能发的表情）
+
+qq-agent 的表情库只有两个来源：同步 QQ 账号自己的收藏表情、AI 用 `collect_sticker` 从群消息里收藏。
+没有"手动放图"的入口，但数据层支持 `source: 'manual'`（`stickers.js` 的 `mergeStickerLibrary`
+只清理 `source === 'qq'` 的条目），所以直接写 `stickers.json` 是安全的、不会被同步冲掉。
+
+要发的图**必须放在协议端能下载到的公网地址**上 —— OneBot 发图是
+`{type:'image', data:{file:<url>}}`，由协议端去取。本目录的 nginx 模板为此加了
+`/stickers/`（注意其中的 `auth_basic off`：协议端取图是裸请求，不加就会被 401 挡掉）。
+
+```bash
+./stickers-import.sh              # 下载 + 写库（webp）
+./stickers-import.sh --convert    # 额外转成 png（用 SnowLuma 容器里的 ffmpeg）
+```
+
+注意两点：宿主机 Python 是 3.6，urllib 对 IDN 主机名的证书校验会失败，所以下载用 curl；
+写库前必须先停服，否则会被运行中进程的内存列表覆盖回去。
