@@ -233,8 +233,13 @@ export class Orchestrator {
     //
     // 未命中时：标记已读、不创建会话、不调模型 —— 这才是省 token 的关键
     // （消息内容仍留在存档里，日后被艾特时会作为"已读历史"带进提示词）。
-    const cfgNow = getConfig();
     let pendingEntries = [];
+    // 闸门那次判定的结果（含已经落定的随机骰子）必须**原样复用**给本次运行。
+    // 3 档的触发方式是掷骰子，若在这里重新调一次 resolveContextTier 等于再掷一次：
+    // 没掷中就会拿到 tier=0 / count=0，于是提示词里【过去状态】退化成
+    // "暂无历史记录，这是你第一次参与这个会话" —— 模型每次运行都失忆，
+    // 表现为"记不住上下文"。实测最近 15 次运行里有 5 次因此只读了 0 条历史。
+    let tierResult0 = null;
     if (!proactive) {
       // peekUnread 只看不取，limit 给足以免漏判（判定用的是这批的文本）
       pendingEntries = this.store.peekUnread(chatKey, 200) || [];
@@ -244,7 +249,7 @@ export class Orchestrator {
       }
 
       // 复用 scheduleWake 那一份判定逻辑，避免两处各写一套、日后漂移
-      const tierResult0 = this.#predictTier(chatKey);
+      tierResult0 = this.#predictTier(chatKey);
 
       if (tierResult0.shouldRespond === false) {
         // 不响应：沉入历史（已读），不产生会话、不消耗 token。
@@ -273,15 +278,18 @@ export class Orchestrator {
     }
 
     // ── 档位：响应时带多少条已读历史 ──
-    // 在唤醒时算一次并固定下来（尤其是随机档的骰子结果），
-    // 否则后续每次渲染提示词都会重新掷，会话记录与提示词会对不上。
-    const tierResult = resolveContextTier({
-      triggerEntries,
-      selfNickname: cfgNow.persona?.selfNickname || this.onebot.selfNickname || '',
-      botName: cfgNow.persona?.botName || '',
-      selfId: cfgNow.onebot?.selfId || this.onebot.selfId || '',
-      cfg: storeConfigForChat(chatKey)   // 与 #predictTier 同一来源，保证预判/实跑一致
-    });
+    // 复用闸门那次判定（tierResult0）：骰子只掷一次，提示词与会话记录才会一致。
+    const tierResult = tierResult0 || (() => {
+      // 主动唤醒（冷场开话题）没有触发批，@/关键词都不适用，掷骰子更没意义 ——
+      // 直接按全读档给条数。否则"主动开话题"会是盲开（上下文 0 条）。
+      const cfgChat = storeConfigForChat(chatKey);
+      return {
+        tier: 4,
+        count: Math.max(0, Number(cfgChat.allCount) || 0),
+        reason: '主动唤醒（读满）',
+        shouldRespond: true
+      };
+    })();
 
     this.runningChats.add(chatKey);
     const seq = (this.runSeq.get(chatKey) || 0) + 1;
